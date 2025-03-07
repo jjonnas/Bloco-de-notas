@@ -1,0 +1,165 @@
+--Buscar massas de dados
+SELECT *
+FROM (SELECT PESS.CPF_CNPJ,
+             PESS.CIF                                    OID_PESSOA,
+             SALD.IS_DELETED,
+             SALD.FCONTA,
+             SALD.NUM_AG,
+             CAPI.FSALDOATU                              CAPITAL,
+             (SELECT LAST_DAY(TRUNC(SYSDATE)) FROM DUAL) DEBITO_AD,
+             ESPE.FNDIADEB                               DEBITO_CH,
+             CASE
+                 WHEN SALD.FCSITU = 'P' THEN
+                         (SELECT (TRUNC(SYSDATE) - 1) FROM DUAL) - SALD.FDTRANPREJ
+                 WHEN SALD.FCSITU <> 'P' THEN
+                     CES.QTD_INADIMPLENTE
+                 END                                     "DIAS_ATRASO",
+             ESPE.FNDIASUTIL                             DIAS_UTILIZACAO_LIMITE,
+             (ESPE.FVJURMES + CES.VLR_JURO_INADIMPLENTE + SALD.FJURMES +
+              SALD.FNAPROTO + CES.VLR_JUR_ACIMA60)       ENCARGOS,
+             (SALD.FJURMES - SALD.FNAPROME)              JUROS_AD,
+             (SALD.FNAPROME + SALD.FNAPROTO)             JUROS_AD_ACIMA60,
+             ESPE.FVJURMES                               JUROS_CH,
+             CES.VLR_JURO_INADIMPLENTE                   JUROS_CHI,
+             CES.VLR_JUR_ACIMA60                         JUROS_CHI_ACIMA60,
+             SALD.FLIMITE                                LIMITE_CH,
+             CASE
+                 WHEN SALD.FSALDO_OL < 0 AND ABS(SALD.FSALDO_OL) <= SALD.FLIMITE THEN
+                     ABS(SALD.FSALDO_OL)
+                 WHEN SALD.FSALDO_OL < 0 AND ABS(SALD.FSALDO_OL) > SALD.FLIMITE THEN
+                     ABS(SALD.FLIMITE)
+                 ELSE
+                     0
+                 END                                     "LIMITE_UTILIZADO",
+             CASE
+                 WHEN ABS(FSALDO_OL) > SALD.FLIMITE THEN
+                     ABS(FSALDO_OL) - SALD.FLIMITE
+                 ELSE
+                     0
+                 END                                     SALDO_AD,
+             SALD.FSALDO_OL                              SALDO_ONLINE,
+             CASE
+                 WHEN SALD.FCSITU = 'P' THEN
+                     'PREJUIZO'
+                 WHEN SALD.FSALDO_OL >= 0 OR
+                      (SALD.FSALDO_OL < 0 AND ABS(SALD.FSALDO_OL) <= SALD.FLIMITE) THEN
+                     'ADIMPLENTE'
+                 WHEN (SALD.FSALDO_OL < 0 AND ABS(SALD.FSALDO_OL) > SALD.FLIMITE) THEN
+                     'INADIMPLENTE'
+                 END                                     "SITUACAO_CONTA",
+             SALD.FVALORTARI                             TARIFAS,
+             CASE
+                 WHEN SALD.FSALDO_OL >= 0 THEN
+                     ABS(SALD.FSALDO_OL - (SALD.FVALORTARI + ESPE.FVJURMES +
+                                           CES.VLR_JURO_INADIMPLENTE + SALD.FJURMES))
+                 WHEN SALD.FSALDO_OL < 0 THEN
+                     ABS(SALD.FSALDO_OL) + SALD.FVALORTARI + ESPE.FVJURMES +
+                     CES.VLR_JURO_INADIMPLENTE + SALD.FJURMES + CES.VLR_JUR_ACIMA60 + SALD.FNAPROTO
+                 END                                     VALOR_DIVIDA
+      FROM AGUNICO.CCR1SALD SALD,
+           AGUNICO.CCR1ESPE ESPE,
+           VW_PESSOA PESS,
+           AG0723.CCR0ASSO ASSO,
+           AG0723.CCRESALD CAPI,
+           CHEQUE_ESPECIAL_SALDO CES
+      WHERE 1 = 1
+        AND SALD.NUM_AG = '0723'
+        AND ESPE.NUM_AG = '0723'
+        AND CES.NUM_AGENCIA = '0723'
+        AND SALD.FCONTA = ESPE.FCONTA
+        AND REPLACE(SALD.FCONTA, '-') = CES.NUM_CONTA
+        AND SALD.FCONTA = ASSO.FCONTA
+        AND SALD.FCONTA = CAPI.FCONTA
+        AND PESS.CPF_CNPJ = REPLACE(REPLACE(REPLACE(asso.FCPF_CGC, '.', ''), '-', ''), '/', ''))
+WHERE 1 = 1
+    --AND OID_PESSOA = '15051615'
+  AND SITUACAO_CONTA = 'INADIMPLENTE' -- ADIMPLENTE - PREJUIZO - INADIMPLENTE
+
+;
+
+--Consulta ladap por cooperativa
+SELECT num_posto,COD_USUARIO_LDAP,FLG_CARTEIRA_PADRAO, num_agencia
+FROM admi_owner.cadastro_carteira
+LEFT JOIN sicredi_owner.pessoa_usuario_ldap ON (pessoa_usuario_ldap.oid_pessoa = cadastro_carteira.oid_pessoa)
+WHERE 1=1
+    --and COD_USUARIO_LDAP like '%alex%'
+and num_agencia = '0217'
+and COD_USUARIO_LDAP is not null
+;
+
+select * from PRC_OWNER.RESTRICAO
+where COD_COOPERATIVA = '0217';
+
+
+select owner, table_name from all_tab_columns where column_name = 'tpo_movimento' AND owner like '%0217%';
+
+
+
+SELECT *
+FROM PRC_OWNER.SIMULACAO
+WHERE 1 = 1
+  AND DAT_SIMULACAO >= TO_DATE('2024-07-26', 'YYYY-MM-DD')
+  AND TPO_AGENTE = '2'
+  AND NOM_USUARIO_LDAP = 'maria_rezende'
+  AND VLR_NEGOCIAR_TOTAL = 5391.18
+;
+
+
+-- buscar oid ou cpf
+SELECT p.CIF AS OID_PESSOA, p.*
+FROM VW_PESSOA p
+WHERE 1 = 1
+  AND p.CPF_CNPJ = '15193283000102';
+
+
+--consulta de boleto (PRC_OWNER.TITULO)
+select * from AGUNICO.ccrltitu
+where fcnossonum = '221026619'
+and fcidusuar = 'RC'
+--where fcidposto = '06'
+and num_ag = '0800'
+and fccedente like '%02805%'
+
+
+SELECT distinct NOM_USUARIO_LDAP FROM prc_owner.assessoria;
+
+
+SELECT *
+FROM PRC_OWNER.SIMULACAO
+WHERE 1=1
+AND TPO_AGENTE = '2';
+
+
+select * from
+AG0723.ccr0asso where fconta = '00008-2'
+
+
+select *  from ag0136.ccr0asso where fdencrelac != to_date( 1, 'J' )
+
+--Busca situações de dividas de cheque
+SELECT
+    CASE
+        WHEN FCSITU = 'P'
+            THEN 'PREJUIZO'
+        WHEN FSALDO_OL     >= 0
+        OR (FSALDO_OL       < 0
+        AND ABS(FSALDO_OL) <= FLIMITE)
+            THEN 'ADIMPLENTE'
+        WHEN (FSALDO_OL    < 0
+        AND ABS(FSALDO_OL) > FLIMITE)
+            THEN 'INADIMPLENTE'
+  END situacao,
+  REPLACE(fconta, '-', '') AS contaCorrente
+     FROM ag0723.ccr1sald
+     WHERE 1=1
+     AND IS_DELETED = 'N';
+
+--buscar ldap acessoria
+Select  
+  neg.OID_NEGOCIACAO, neg.COD_COOPERATIVA, NEG.COD_UA, sim.TPO_AGENTE, sim.NOM_USUARIO_LDAP 
+from prc_owner.negociacao neg, PRC_OWNER.SIMULACAO sim
+where 1 = 1
+AND neg.OID_NEGOCIACAO = sim.OID_NEGOCIACAO
+AND neg.COD_COOPERATIVA = '0723'
+AND sim.TPO_AGENTE = '2' --- tipo 1 = cooperativa / tipo 2 = assessoria
+ORDER BY neg.OID_NEGOCIACAO DESC;
